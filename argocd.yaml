@@ -1,0 +1,48 @@
+global:
+  domain: https://argo.app.monlabo.de
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi            
+server:
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  config:
+    url: "https://argo.app.monlabo.de"
+  extraArgs:
+    - --insecure    
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      # alb.ingress.kubernetes.io/backend-protocol: HTTPS
+      # # Use this annotation (which must match a service name) to route traffic to HTTP2 backends.
+      # alb.ingress.kubernetes.io/conditions.argogrpc: |
+      #   [{"field":"http-header","httpHeaderConfig":{"httpHeaderName": "Content-Type", "values":["application/grpc"]}}]
+      # alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    hosts:
+      - argo.app.monlabo.de
+
+configs:
+  params:
+    server.insecure: true
+
+redis-ha:
+  enabled: false
+
+redis:
+  enabled: true
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: true

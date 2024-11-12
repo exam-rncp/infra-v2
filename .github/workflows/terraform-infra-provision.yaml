@@ -1,0 +1,84 @@
+name: "Terraform Infra Provision"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Select action'
+        required: true
+        default: 'apply'
+        type: choice
+        options:
+          - apply
+          - destroy
+      confirm:
+        description: 'Should TF script be applied? (yes or no)'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: eu-west-3
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials from AWS account
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          if [ "${{ github.event.inputs.action }}" == "apply" ]; then
+            terraform plan -no-color -out=plan.out -detailed-exitcode | tee terraform_plan.log
+          else
+            terraform plan -destroy -target=module.eks -target=module.vpc -out=plan.out  | tee terraform_plan.log
+          fi
+        continue-on-error: true
+
+      - name: Display Terraform Plan Log
+        if: steps.plan.outcome == 'failure'
+        run: cat terraform_plan.log
+
+      - name: Apply Terraform Configuration
+        if: ${{ github.event.inputs.confirm == 'yes' }}
+        run: terraform apply --auto-approve plan.out
+
+      - name: Cleaning Up Residual Resources
+        if: success() && github.event.inputs.action  == 'destroy'
+        run: |
+          terraform plan -destroy -target=kubernetes_service_account.service-account -target=module.lb_role -out=remaining_plan.out | tee cleanup_plan.log
+
+      - name: Apply Cleanup Plan
+        if: success() && github.event.inputs.action == 'destroy' && github.event.inputs.confirm == 'yes'
+        run: terraform apply --auto-approve remaining_plan.out
+
+      - name: Display Terraform Cleanup Plan Log
+        if: failure()
+        run: cat cleanup_plan.log
